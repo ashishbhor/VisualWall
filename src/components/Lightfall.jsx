@@ -339,7 +339,31 @@ const Lightfall = ({
   const canvasRef = useRef(null);
   const wakeRef = useRef(null);
   const settingsRef = useRef(null);
+  // Android phones use a lightweight CSS background instead of the
+  // full-screen WebGL effect. This avoids GPU/context failures on mobile.
+  const [isMobile, setIsMobile] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 767px), (pointer: coarse)").matches,
+  );
+  const [webglFailed, setWebglFailed] = useState(false);
   const [generation, setGeneration] = useState(0);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(
+      "(max-width: 767px), (pointer: coarse)",
+    );
+
+    const updateDeviceMode = () => setIsMobile(mediaQuery.matches);
+    updateDeviceMode();
+
+    mediaQuery.addEventListener?.("change", updateDeviceMode);
+
+    return () => {
+      mediaQuery.removeEventListener?.("change", updateDeviceMode);
+    };
+  }, []);
+
   const settings = useMemo(
     () => ({
       colors: (Array.isArray(colors) && colors.length ? colors : ["#ffffff"])
@@ -406,9 +430,16 @@ const Lightfall = ({
   }, [settings]);
 
   useEffect(() => {
+    // Keep the expensive WebGL renderer off phones. The CSS background below
+    // preserves the red glow without consuming GPU resources.
+    if (isMobile) return undefined;
+
     const container = containerRef.current;
     const canvas = canvasRef.current;
-    const gl = canvas?.getContext("webgl2", {
+
+    if (!container || !canvas) return undefined;
+
+    const gl = canvas.getContext("webgl2", {
       alpha: true,
       premultipliedAlpha: true,
       antialias: false,
@@ -416,20 +447,34 @@ const Lightfall = ({
       stencil: false,
       powerPreference: "high-performance",
     });
-    if (!container || !canvas || !gl) return undefined;
+
+    if (!gl) {
+      setWebglFailed(true);
+      return undefined;
+    }
 
     const floatTargets = !!gl.getExtension("EXT_color_buffer_float");
     const streakProgram = link(gl, STREAKS);
     const downProgram = link(gl, DOWNSAMPLE);
     const blurProgram = link(gl, BLUR);
     const compositeProgram = link(gl, COMPOSITE);
-    if (!streakProgram || !downProgram || !blurProgram || !compositeProgram)
+    if (!streakProgram || !downProgram || !blurProgram || !compositeProgram) {
+      setWebglFailed(true);
       return undefined;
+    }
+
+    setWebglFailed(false);
 
     const onContextLost = (event) => {
       event.preventDefault();
+      setWebglFailed(true);
+      cancelAnimationFrame(raf);
+      raf = 0;
     };
-    const onContextRestored = () => setGeneration((value) => value + 1);
+    const onContextRestored = () => {
+      setWebglFailed(false);
+      setGeneration((value) => value + 1);
+    };
     canvas.addEventListener("webglcontextlost", onContextLost);
     canvas.addEventListener("webglcontextrestored", onContextRestored);
 
@@ -822,7 +867,7 @@ const Lightfall = ({
       gl.deleteBuffer(buffer);
       gl.deleteVertexArray(vao);
     };
-  }, [generation]);
+  }, [generation, isMobile]);
 
   useEffect(() => {
     wakeRef.current?.();
@@ -832,13 +877,24 @@ const Lightfall = ({
     <div
       ref={containerRef}
       className={`relative w-full h-full overflow-hidden ${className}`}
-      style={{ ...(mixBlendMode ? { mixBlendMode } : null), ...style }}
+      style={{
+        background:
+          isMobile || webglFailed
+            ? "radial-gradient(ellipse at 50% 42%, rgba(231, 15, 15, 0.22) 0%, rgba(231, 15, 15, 0.08) 34%, transparent 68%), linear-gradient(180deg, #111827 0%, #0B101B 100%)"
+            : "transparent",
+        ...(mixBlendMode ? { mixBlendMode } : null),
+        ...style,
+      }}
     >
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 block w-full h-full"
-        aria-hidden="true"
-      />
+      {!isMobile && (
+        <canvas
+          ref={canvasRef}
+          className={`absolute inset-0 block h-full w-full ${
+            webglFailed ? "opacity-0" : "opacity-100"
+          }`}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 };

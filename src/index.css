@@ -262,3 +262,20 @@ button,
 a {
   touch-action: manipulation;
 }
+
+/* Mobile viewport and horizontal overflow protection */
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+body {
+  position: relative;
+}
+
+#root {
+  min-height: 100dvh;
+}
