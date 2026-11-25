@@ -339,8 +339,8 @@ const Lightfall = ({
   const canvasRef = useRef(null);
   const wakeRef = useRef(null);
   const settingsRef = useRef(null);
-  // Android phones use a lightweight CSS background instead of the
-  // full-screen WebGL effect. This avoids GPU/context failures on mobile.
+  // Touch devices use the same WebGL Lightfall renderer with mobile-only
+  // performance and framing adjustments. Desktop rendering stays unchanged.
   const [isMobile, setIsMobile] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -430,10 +430,7 @@ const Lightfall = ({
   }, [settings]);
 
   useEffect(() => {
-    // Keep the expensive WebGL renderer off phones. The CSS background below
-    // preserves the red glow without consuming GPU resources.
-    if (isMobile) return undefined;
-
+    // Use the original WebGL renderer on both desktop and mobile.
     const container = containerRef.current;
     const canvas = canvasRef.current;
 
@@ -445,7 +442,7 @@ const Lightfall = ({
       antialias: false,
       depth: false,
       stencil: false,
-      powerPreference: "high-performance",
+      powerPreference: isMobile ? "low-power" : "high-performance",
     });
 
     if (!gl) {
@@ -619,9 +616,14 @@ const Lightfall = ({
       const toScreenX = (value) => (2 * value - width) / width;
       const toScreenY = (value) => (2 * value - height) / width;
 
+      // A slightly wider field of view helps the tunnel occupy more of a
+      // portrait phone screen. Desktop keeps the exact original zoom value.
+      const renderZoom =
+        isMobile && cssHeight > cssWidth ? s.zoom * 0.82 : s.zoom;
+
       const r = pass(scene, streakProgram);
       gl.uniform2f(r.uView, width, height);
-      gl.uniform1f(r.uZoom, s.zoom);
+      gl.uniform1f(r.uZoom, renderZoom);
       gl.uniform1f(r.uPhase, clock % (16 * period));
       gl.uniform1f(r.uTwinkleClock, clock % TAU);
       gl.uniform1f(r.uRings, rings);
@@ -638,20 +640,21 @@ const Lightfall = ({
         r.uMouse,
         toScreenX(state.mouseX),
         toScreenY(state.mouseY),
-        s.mouseInteraction ? s.mouseStrength * state.touch : 0,
+        !isMobile && s.mouseInteraction ? s.mouseStrength * state.touch : 0,
         s.mouseRadius,
       );
       gl.uniform3f(
         r.uLens,
         toScreenX(state.lensX),
         toScreenY(state.lensY),
-        s.mouseInteraction ? 0.5 * s.lens * state.touch : 0,
+        !isMobile && s.mouseInteraction ? 0.5 * s.lens * state.touch : 0,
       );
       gl.uniform1f(r.uLightMode, s.lightMode ? 1 : 0);
       gl.uniform1f(r.uEncode, encode);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-      if (s.bloom > 0) {
+      const renderBloom = isMobile ? Math.min(s.bloom, 0.25) : s.bloom;
+      if (renderBloom > 0) {
         let source = scene;
         levels.forEach(([front, back]) => {
           const d = pass(front, downProgram);
@@ -689,7 +692,7 @@ const Lightfall = ({
       gl.uniform2f(c.uView, width, height);
       gl.uniform1f(c.uDecode, 1 / encode);
       gl.uniform1f(c.uGlow, s.glow);
-      gl.uniform1f(c.uBloom, s.bloom);
+      gl.uniform1f(c.uBloom, renderBloom);
       gl.uniform1f(c.uPresence, presence);
       gl.uniform1f(c.uOpacity, s.opacity);
       gl.uniform1f(c.uFade, s.fade);
@@ -703,6 +706,13 @@ const Lightfall = ({
     const frame = (now) => {
       raf = 0;
       if (!visible || document.hidden) return;
+
+      // Cap mobile rendering at approximately 30 FPS. Desktop is unchanged.
+      if (isMobile && last && now - last < 1000 / 30) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+
       const s = settingsRef.current;
       const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60;
       last = now;
@@ -710,7 +720,8 @@ const Lightfall = ({
       else if (state.intro < 1)
         state.intro = Math.min(1, state.intro + dt / INTRO_SECONDS);
 
-      const holding = s.holdToWarp && pointer.held && pointer.inside && !reduce;
+      const holding =
+        !isMobile && s.holdToWarp && pointer.held && pointer.inside && !reduce;
       state.warp +=
         ((holding ? 1 : 0) - state.warp) *
         (1 - Math.exp(-dt * (holding ? 2.2 : 1.6)));
@@ -721,7 +732,8 @@ const Lightfall = ({
       const ratio = canvas.width / Math.max(1, container.clientWidth);
       const targetX = pointer.x * ratio;
       const targetY = (container.clientHeight - pointer.y) * ratio;
-      const engaged = s.mouseInteraction && pointer.inside && !reduce;
+      const engaged =
+        !isMobile && s.mouseInteraction && pointer.inside && !reduce;
       if (engaged && state.touch < 0.01) {
         state.mouseX = targetX;
         state.mouseY = targetY;
@@ -759,7 +771,8 @@ const Lightfall = ({
       const s = settingsRef.current;
       const width = Math.max(1, container.clientWidth);
       const height = Math.max(1, container.clientHeight);
-      const ratio = Math.min(s.dpr || window.devicePixelRatio || 1, 2);
+      const requestedRatio = s.dpr || window.devicePixelRatio || 1;
+      const ratio = Math.min(requestedRatio, isMobile ? 1 : 2);
       canvas.width = Math.max(1, Math.round(width * ratio));
       canvas.height = Math.max(1, Math.round(height * ratio));
       if (!raf) render();
@@ -821,11 +834,15 @@ const Lightfall = ({
       }
     });
     intersection.observe(container);
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerdown", onPointerDown, { passive: true });
-    window.addEventListener("pointerup", onPointerUp, { passive: true });
-    window.addEventListener("pointercancel", onPointerUp, { passive: true });
-    document.documentElement.addEventListener("pointerleave", onPointerLeave);
+    // Mouse interaction remains enabled on desktop. Mobile runs as a
+    // self-contained animation and does not track taps or touch movement.
+    if (!isMobile) {
+      window.addEventListener("pointermove", onPointerMove, { passive: true });
+      window.addEventListener("pointerdown", onPointerDown, { passive: true });
+      window.addEventListener("pointerup", onPointerUp, { passive: true });
+      window.addEventListener("pointercancel", onPointerUp, { passive: true });
+      document.documentElement.addEventListener("pointerleave", onPointerLeave);
+    }
     document.addEventListener("visibilitychange", onVisibility);
     resize();
 
@@ -848,14 +865,16 @@ const Lightfall = ({
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       resizeObserver.disconnect();
       intersection.disconnect();
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
-      document.documentElement.removeEventListener(
-        "pointerleave",
-        onPointerLeave,
-      );
+      if (!isMobile) {
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerdown", onPointerDown);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+        document.documentElement.removeEventListener(
+          "pointerleave",
+          onPointerLeave,
+        );
+      }
       document.removeEventListener("visibilitychange", onVisibility);
       [scene, ...levels.flat()].forEach((target) => {
         if (target.texture) gl.deleteTexture(target.texture);
@@ -878,23 +897,20 @@ const Lightfall = ({
       ref={containerRef}
       className={`relative w-full h-full overflow-hidden ${className}`}
       style={{
-        background:
-          isMobile || webglFailed
-            ? "radial-gradient(ellipse at 50% 42%, rgba(231, 15, 15, 0.22) 0%, rgba(231, 15, 15, 0.08) 34%, transparent 68%), linear-gradient(180deg, #111827 0%, #0B101B 100%)"
-            : "transparent",
+        background: webglFailed
+          ? "radial-gradient(ellipse at 50% 42%, rgba(231, 15, 15, 0.22) 0%, rgba(231, 15, 15, 0.08) 34%, transparent 68%), linear-gradient(180deg, #111827 0%, #0B101B 100%)"
+          : "transparent",
         ...(mixBlendMode ? { mixBlendMode } : null),
         ...style,
       }}
     >
-      {!isMobile && (
-        <canvas
-          ref={canvasRef}
-          className={`absolute inset-0 block h-full w-full ${
-            webglFailed ? "opacity-0" : "opacity-100"
-          }`}
-          aria-hidden="true"
-        />
-      )}
+      <canvas
+        ref={canvasRef}
+        className={`pointer-events-none absolute inset-0 block h-full w-full ${
+          webglFailed ? "opacity-0" : "opacity-100"
+        }`}
+        aria-hidden="true"
+      />
     </div>
   );
 };
