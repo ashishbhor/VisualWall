@@ -242,6 +242,9 @@ function ResultGride() {
     hasMoreUnsplash,
     hasMoreWallhaven,
     nextPhotoSource,
+    resultsQuery,
+    resultsTab,
+    hasLoadedResults,
   } = useSelector((store) => store.search);
 
   const [loadingMessage] = useState(
@@ -316,6 +319,14 @@ function ResultGride() {
 
   useEffect(() => {
     if (!query?.trim()) return;
+
+    if (
+      hasLoadedResults &&
+      resultsQuery === query &&
+      resultsTab === activeTab
+    ) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -413,7 +424,15 @@ function ResultGride() {
     return () => {
       cancelled = true;
     };
-  }, [query, activeTab, dispatch, prefetchBatch]);
+  }, [
+    query,
+    activeTab,
+    dispatch,
+    prefetchBatch,
+    hasLoadedResults,
+    resultsQuery,
+    resultsTab,
+  ]);
 
   // Show the Top button after scrolling one screen
   useEffect(() => {
