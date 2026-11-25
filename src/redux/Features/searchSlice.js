@@ -12,6 +12,9 @@ const initialState = {
     wallhavenPage: 1,
     hasMoreWallhaven: true,
     nextPhotoSource: "unsplash",
+    resultsQuery: null,
+    resultsTab: null,
+    hasLoadedResults: false,
 };
 
 const removeDuplicates = (items) => {
@@ -41,6 +44,9 @@ const searchSlice = createSlice({
             state.wallhavenPage = 1;
             state.hasMoreWallhaven = true;
             state.nextPhotoSource = "unsplash";
+            state.resultsQuery = null;
+            state.resultsTab = null;
+            state.hasLoadedResults = false;
         },
 
         setActiveTabs(state, action) {
@@ -53,6 +59,9 @@ const searchSlice = createSlice({
             state.loadingMore = false;
             state.error = null;
             state.paginationError = null;
+            state.resultsQuery = state.query;
+            state.resultsTab = state.activeTab;
+            state.hasLoadedResults = true;
         },
 
         setInitialPhotoResults(state, action) {
@@ -69,6 +78,9 @@ const searchSlice = createSlice({
             state.loadingMore = false;
             state.error = null;
             state.paginationError = null;
+            state.resultsQuery = state.query;
+            state.resultsTab = state.activeTab;
+            state.hasLoadedResults = true;
         },
 
         appendPhotoResults(state, action) {
@@ -136,11 +148,16 @@ const searchSlice = createSlice({
             state.loadingMore = false;
             state.error = null;
             state.paginationError = null;
+
             state.unsplashPage = 1;
             state.wallhavenPage = 1;
             state.hasMoreUnsplash = true;
             state.hasMoreWallhaven = true;
             state.nextPhotoSource = "unsplash";
+
+            state.resultsQuery = null;
+            state.resultsTab = null;
+            state.hasLoadedResults = false;
         },
     },
 });
