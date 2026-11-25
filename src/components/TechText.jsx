@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const LABEL_FONT =
   "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
@@ -64,6 +64,29 @@ const TechText = ({
   className = "",
   style,
 }) => {
+  // Touch-first devices use lightweight HTML text instead of creating a canvas.
+  // The desktop canvas implementation below remains unchanged.
+  const [isTouchDevice, setIsTouchDevice] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(pointer: coarse)").matches,
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia?.("(pointer: coarse)");
+    if (!query) return undefined;
+
+    const update = (event) => setIsTouchDevice(event.matches);
+
+    if (query.addEventListener) {
+      query.addEventListener("change", update);
+      return () => query.removeEventListener("change", update);
+    }
+
+    query.addListener(update);
+    return () => query.removeListener(update);
+  }, []);
+
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const settingsRef = useRef(null);
@@ -102,6 +125,8 @@ const TechText = ({
   });
 
   useEffect(() => {
+    if (isTouchDevice) return undefined;
+
     const container = containerRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -1128,7 +1153,67 @@ const TechText = ({
       container.removeEventListener("pointercancel", onUp);
       container.removeEventListener("pointerleave", onLeave);
     };
-  }, []);
+  }, [isTouchDevice]);
+
+  if (isTouchDevice) {
+    const mobileFontSize = Math.max(12, Math.min(Number(fontSize) || 150, 20));
+    const mobileColor =
+      !color || INHERIT.test(String(color).trim()) ? "currentColor" : color;
+
+    return (
+      <div
+        className={`relative flex h-full w-full items-center justify-center overflow-hidden select-none ${className}`.trim()}
+        style={{
+          color: mobileColor,
+          fontFamily: fontFamily || "inherit",
+          ...style,
+        }}
+        role="img"
+        aria-label={text}
+      >
+        <style>{`
+          @keyframes techtext-mobile-type {
+            from { opacity: 0; transform: translateY(0.3em); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .techtext-mobile-character {
+            display: inline-block;
+            opacity: 0;
+            animation: techtext-mobile-type 260ms ease-out forwards;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .techtext-mobile-character { animation: none; opacity: 1; transform: none; }
+          }
+        `}</style>
+        <span
+          aria-hidden="true"
+          style={{
+            display: "block",
+            maxWidth: "100%",
+            overflow: "hidden",
+            whiteSpace: "pre",
+            textOverflow: "clip",
+            textAlign: align,
+            fontFamily: fontFamily || "inherit",
+            fontSize: `${mobileFontSize}px`,
+            fontWeight,
+            letterSpacing: `${letterSpacing}em`,
+            lineHeight: 1.1,
+          }}
+        >
+          {Array.from(text).map((character, index) => (
+            <span
+              className="techtext-mobile-character"
+              key={`${index}-${character}`}
+              style={{ animationDelay: `${index * 45}ms` }}
+            >
+              {character === " " ? "\u00a0" : character}
+            </span>
+          ))}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
