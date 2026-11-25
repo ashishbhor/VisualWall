@@ -339,7 +339,7 @@ const ResultCard = ({ item }) => {
               aria-label="Download media"
               disabled={isDownloading}
               onClick={handleDownload}
-              className="absolute bottom-3 left-3 z-10 flex h-9.5 w-9 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-all duration-300 hover:bg-green-500 group-hover:opacity-100 active:scale-95 disabled:cursor-wait disabled:opacity-100"
+              className="absolute bottom-3 left-3 z-10 flex h-9.5 w-9 items-center justify-center rounded-full bg-black/60 text-white opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 transition-all duration-300 hover:bg-green-500 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 active:scale-95 disabled:cursor-wait disabled:opacity-100"
             >
               {isDownloading ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -357,8 +357,10 @@ const ResultCard = ({ item }) => {
           onClick={handleBookmarkClick}
           className={`absolute ${
             item.type === "video" ? "right-3 top-3" : "bottom-3 right-3"
-          } z-20 flex h-10 w-10 items-center justify-center rounded-full text-white transition-all duration-300 hover:bg-blue-700 group-hover:opacity-100 active:scale-95 ${
-            bookmarked ? "bg-blue-500 opacity-100" : "bg-black/60 opacity-0"
+          } z-20 flex h-10 w-10 items-center justify-center rounded-full text-white transition-all duration-300 hover:bg-blue-700 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 active:scale-95 ${
+            bookmarked
+              ? "bg-blue-500 opacity-100"
+              : "bg-black/60 opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0"
           }`}
         >
           <BookmarkIcon className="h-6 w-6" />
